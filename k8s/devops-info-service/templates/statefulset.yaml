@@ -1,0 +1,80 @@
+{{- if .Values.statefulset.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "devops-info-service.fullname" . }}
+  labels:
+    {{- include "devops-info-service.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "devops-info-service.fullname" . }}-headless
+  replicas: {{ .Values.replicaCount }}
+  podManagementPolicy: {{ .Values.statefulset.podManagementPolicy }}
+  selector:
+    matchLabels:
+      {{- include "devops-info-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "devops-info-service.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "devops-info-service.serviceAccountName" . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            - name: PORT
+              value: {{ .Values.env.PORT | quote }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "devops-info-service.fullname" . }}-env
+          {{- if .Values.credentialsSecret.enabled }}
+            - secretRef:
+                name: {{ include "devops-info-service.credentialsSecretName" . }}
+          {{- end }}
+          volumeMounts:
+            - name: config-volume
+              mountPath: /config
+              readOnly: true
+            - name: {{ .Values.statefulset.volumeClaimTemplate.name }}
+              mountPath: /data
+          ports:
+            - name: {{ .Values.containerPortName }}
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+      volumes:
+        - name: config-volume
+          configMap:
+            name: {{ include "devops-info-service.fullname" . }}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: {{ .Values.statefulset.volumeClaimTemplate.name }}
+        labels:
+          {{- include "devops-info-service.labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - {{ .Values.statefulset.volumeClaimTemplate.accessMode | quote }}
+        resources:
+          requests:
+            storage: {{ .Values.statefulset.volumeClaimTemplate.size | quote }}
+        {{- if .Values.statefulset.volumeClaimTemplate.storageClass }}
+        storageClassName: {{ .Values.statefulset.volumeClaimTemplate.storageClass | quote }}
+        {{- end }}
+{{- end }}
+
